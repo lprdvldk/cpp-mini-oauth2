@@ -1,0 +1,17 @@
+[
+    {
+        "allowed_grants": [
+            "password",
+            "client_credentials",
+            "refresh_token"
+        ],
+        "allowed_scopes": [
+            "payments:read",
+            "payments:write",
+            "users:read"
+        ],
+        "aud": "payments-api",
+        "client_id": "cli-001",
+        "client_secret": "secret"
+    }
+]

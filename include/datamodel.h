@@ -32,4 +32,10 @@ struct RefreshRecord {
     bool rotated = false;
 };
 
+struct RevocationRecord {
+  QString type; // "access" or "refresh"
+  QString tokenId;
+  QDateTime expires;
+};
+
 #endif // DATAMODEL_H
