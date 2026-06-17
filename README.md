@@ -47,9 +47,9 @@ Building for macbook air m4 apple sillicon. macOS Tahoe 26.2
 5. python3 (I'm using python3.12 currently)
 
 # Build
+In dir execute
 ```bash
-git clone <repository-url>
-cd cpp-mini-oauth2
+chmod +x build.sh
 ./build.sh
 ```
 
@@ -373,8 +373,7 @@ Checks the status of an access token and returns its metadata if active.
 ```
 # Error Codes
 
-All endpoints return JSON responses with error and error_description fields on failure.
-
+```text
 Error Code             | Description
 invalid_client         | Client ID or secret is incorrect.
 invalid_grant          | Invalid username/password, expired refresh token, etc.
@@ -384,6 +383,7 @@ unsupported_grant_type | Unknown grant_type value.
 unauthorized_client	   | Client is not allowed to use the requested grant type.
 invalid_request        | Missing required fields (e.g., token).
 server_error           | Internal server error (logged to stderr).
+```
 
 # Token Format
 
