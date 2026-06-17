@@ -490,7 +490,7 @@ jti – unique token identifier (UUID)
 
 ## Refresh Token
 
-The refresh token is an opaque UUID string (without dashes by default). It is stored in refresh_index.ndjson along with its associated metadata.
+The refresh token is an opaque UUID string. It is stored in refresh_index.ndjson along with its associated metadata.
 
 # Interactive Test Client (Python)
 
@@ -530,18 +530,18 @@ Choose an option (0-9):
 # User Manual
 
 1. Prepare Data – ensure data/users.json, data/clients.json, and data/roles.json exist with at least one user, client, and role definitions.
-2. Start Testing – use the interactive test clients (Python or Bash) to run predefined scenarios.
+2. Start Testing – use the interactive test clients to run predefined scenarios.
 3. Manual Request – to make a custom request, create a JSON file and run:
 
 ```bash
 ./build/cli-server /token my_request.json my_response.json
 ```
 
-Inspect Responses – check the output JSON file for the response.
+4. Inspect Responses – check the output JSON file for the response.
 
-Example: Obtaining a Token with curl-like Behavior
+5. Example: Obtaining a Token with curl-like Behavior
 
-Since the server is CLI-based, you can simulate a curl request using a temporary file:
+6. Since the server is CLI-based, you can simulate a curl request using a temporary file:
 
 ```bash
 echo '{"grant_type":"password","username":"alice","password":"password","client_id":"cli-001","client_secret":"secret","scopes":["payments:read"]}' > req.json
