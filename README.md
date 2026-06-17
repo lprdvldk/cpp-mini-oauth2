@@ -457,8 +457,7 @@ server_error           | Internal server error (logged to stderr).
 
 ## Access Token
 
-The access token is a JSON Web Token (JWT) signed with HMAC‑SHA256 using the auth_secret. It contains the following claims:
-
+```text
 typ – "AT" (Access Token)
 alg – "HS256"
 iss – issuer (from config)
@@ -470,7 +469,7 @@ roles – array of user roles
 iat – issued at (UNIX timestamp)
 exp – expiration time (UNIX timestamp)
 jti – unique token identifier (UUID)
-
+```
 - Example (decoded):
 
 ```json
