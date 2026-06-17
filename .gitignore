@@ -1,4 +1,5 @@
 build
 tmp_tests
-data
-config
+config/
+data/refresh_index.ndjson
+data/revocations.ndjson
