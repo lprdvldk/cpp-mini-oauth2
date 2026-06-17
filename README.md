@@ -178,6 +178,19 @@ Command format:
 
 ## POST /token
 
+```bash
+curl -s -X POST "$BASE_URL/token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "grant_type": "password",
+    "username": "alice",
+    "password": "password",
+    "client_id": "cli-001",
+    "client_secret": "secret",
+    "scopes": ["payments:read", "payments:write"]
+  }'
+```
+
 - Request:
 ```json
 {
@@ -207,7 +220,19 @@ Command format:
   "error_description": "Invalid username or password"
 }
 ```
-### Grant Type: client_credentials
+
+Grant Type: client_credentials
+
+```bash
+curl -s -X POST "$BASE_URL/token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "grant_type": "client_credentials",
+    "client_id": "cli-001",
+    "client_secret": "secret",
+    "scopes": ["payments:read"]
+  }'
+```
 
 - Request:
 
@@ -235,6 +260,16 @@ Command format:
 ## POST /token/refresh
 
 Exchanges a valid refresh token for a new access token (and a new refresh token). The old refresh token is marked as rotated and becomes invalid.
+
+```bash
+  -H "Content-Type: application/json" \
+  -d '{
+    "grant_type": "refresh_token",
+    "refresh_token": "'$REFRESH_TOKEN'",
+    "client_id": "cli-001",
+    "client_secret": "secret"
+  }'
+```
 
 - Request:
 
@@ -267,8 +302,16 @@ Exchanges a valid refresh token for a new access token (and a new refresh token)
 ```
 
 ## POST /api/payments
-
 Protected resource endpoint that requires a valid access token with the appropriate scope.
+
+```bash
+curl -s -X POST "$BASE_URL/api/payments" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "access_token": "'$ACCESS_TOKEN'",
+    "method": "GET"
+  }'
+```
 
 - Request:
 
@@ -310,8 +353,25 @@ Protected resource endpoint that requires a valid access token with the appropri
 }
 ```
 ## POST /revoke
-
 Revokes an access token (by JTI) or a refresh token (by token string). The operation is idempotent.
+
+```bash
+curl -s -X POST "$BASE_URL/revoke" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "'$ACCESS_TOKEN'",
+    "token_type_hint": "access_token"
+  }'
+```
+
+```bash
+curl -s -X POST "$BASE_URL/revoke" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "'$REFRESH_TOKEN'",
+    "token_type_hint": "refresh_token"
+  }'
+```
 
 - Request:
 
@@ -342,6 +402,14 @@ If token_type_hint is omitted, the server attempts to detect the type.
 
 ## POST /introspect
 Checks the status of an access token and returns its metadata if active.
+
+```bash
+curl -s -X POST "$BASE_URL/introspect" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "'$ACCESS_TOKEN'"
+  }'
+```
 
 - Request:
 
