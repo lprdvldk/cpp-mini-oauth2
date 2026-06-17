@@ -38,6 +38,8 @@
 
 # Prerequisites
 
+Building for macbook air m4 apple sillicon. macOS Tahoe 26.2
+
 1. Qt (Core module) – version 5 or 6.
 2. OpenSSL – for HMAC-SHA256 signatures.
 3. CMake – version 3.16 or higher.
