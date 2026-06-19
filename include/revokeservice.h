@@ -5,7 +5,7 @@
 
 class RevokeService : public IWebService {
 public:
-  bool handleRequest(const QString &input, const QString &output) override;
+    bool handleRequest(const QString &input, const QString &output) override;
 };
 
-#endif // REVOKESERVICE_H
+#endif  // REVOKESERVICE_H

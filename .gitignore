@@ -1,5 +1,5 @@
 build
 tmp_tests
-config/
-data/refresh_index.ndjson
-data/revocations.ndjson
+.cache
+data/
+.vscode

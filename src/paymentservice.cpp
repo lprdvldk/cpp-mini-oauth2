@@ -1,96 +1,100 @@
 #include "paymentservice.h"
-#include "config.h"
-#include "datamanager.h"
-#include "tokenmanager.h"
-#include <QDateTime>
+
 #include <QDebug>
-#include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
 
+#include "tokenmanager.h"
+#include "utils.h"
+
+using namespace utils;
+
+namespace {
+
+bool validateToken(const QString &accessToken, const QString &expectedAudience,
+                   const QString &output, QString &clientId, QString &userId,
+                   QStringList &scopes, QStringList &roles) {
+    if (!TokenManager::validateAccessToken(accessToken, expectedAudience,
+                                           clientId, userId, scopes, roles)) {
+        return writeError(output, 401, "Unauthorized");
+    }
+    return true;
+}
+
+bool getRequiredScope(const QString &method, QString &requiredScope,
+                      const QString &output) {
+    const QString methodUpper = method.toUpper();
+    if (methodUpper == "GET") {
+        requiredScope = "payments:read";
+        return true;
+    } else if (methodUpper == "POST") {
+        requiredScope = "payments:write";
+        return true;
+    } else {
+        writeError(output, 400, "Bad Request");
+        return true;
+    }
+}
+
+bool checkScope(const QStringList &tokenScopes, const QString &requiredScope,
+                const QString &output) {
+    if (!tokenScopes.contains(requiredScope)) {
+        writeError(output, 403,
+                   "Forbidden. Required scope missing : " + requiredScope);
+        return true;
+    }
+    return true;
+}
+
+bool buildPaymentResponse(const QString &output, const QString &userId,
+                          const QString &method) {
+    QJsonObject resp;
+    resp["status"] = "success";
+    resp["message"] = "Access granted to payments resource";
+    resp["user_id"] = userId;
+
+    const QString methodUpper = method.toUpper();
+    if (methodUpper == "GET") {
+        resp["data"] = "List of payments (dummy)";
+    } else if (methodUpper == "POST") {
+        resp["data"] = "Payment created (dummy)";
+    }
+
+    return writeResponse(output, resp);
+}
+
+}  // namespace
+
 bool PaymentsService::handleRequest(const QString &input,
                                     const QString &output) {
-  QFile inFile(input);
-  if (!inFile.open(QIODevice::ReadOnly)) {
-    qWarning() << "Cannot open input file:" << input;
-    return false;
-  }
-  QByteArray data = inFile.readAll();
-  QJsonDocument doc = QJsonDocument::fromJson(data);
-  if (doc.isNull()) {
-    qWarning() << "Invalid JSON in input";
-    return false;
-  }
-  QJsonObject req = doc.object();
-
-  QString accessToken = req["access_token"].toString();
-  QString method = req["method"].toString().toUpper();
-  if (accessToken.isEmpty()) {
-    QJsonObject resp;
-    resp["error"] = "invalid_request";
-    resp["error_description"] = "Missing access_token";
-    QFile outFile(output);
-    if (outFile.open(QIODevice::WriteOnly)) {
-      outFile.write(QJsonDocument(resp).toJson());
+    QJsonObject request;
+    if (!readRequest(input, request)) {
+        writeError(output, 400, "Bad Request");
+        return true;
     }
-    return true;
-  }
 
-  // Toekn Validation
-  QString clientId, userId;
-  QStringList scopes, roles;
-  QString expectedAudience = "payments-api";
-  if (!TokenManager::validateAccessToken(accessToken, expectedAudience,
-                                         clientId, userId, scopes, roles)) {
-    QJsonObject resp;
-    resp["error"] = "invalid_token";
-    resp["error_description"] = "Token validation failed";
-    QFile outFile(output);
-    if (outFile.open(QIODevice::WriteOnly)) {
-      outFile.write(QJsonDocument(resp).toJson());
+    const auto accessToken = request["access_token"].toString();
+    if (accessToken.isEmpty()) {
+        return writeError(output, 400, "Bad Request");
     }
-    return true;
-  }
 
-  QString requiredScope;
-  if (method == "GET") {
-    requiredScope = "payments:read";
-  } else if (method == "POST") {
-    requiredScope = "payments:write";
-  } else {
-    QJsonObject resp;
-    resp["error"] = "bad_request";
-    resp["error_description"] = "Unsupported method";
-    QFile outFile(output);
-    if (outFile.open(QIODevice::WriteOnly)) {
-      outFile.write(QJsonDocument(resp).toJson());
+    QString clientId, userId;
+    QStringList scopes, roles;
+    const QString expectedAudience = "payments-api";
+    if (!validateToken(accessToken, expectedAudience, output, clientId, userId,
+                       scopes, roles)) {
+        return true;
     }
-    return true;
-  }
 
-  if (!scopes.contains(requiredScope)) {
-    QJsonObject resp;
-    resp["error"] = "insufficient_scope";
-    resp["error_description"] = "Required scope missing: " + requiredScope;
-    QFile outFile(output);
-    if (outFile.open(QIODevice::WriteOnly)) {
-      outFile.write(QJsonDocument(resp).toJson());
+    const auto method = request["method"].toString();
+    QString requiredScope;
+    if (!getRequiredScope(method, requiredScope, output)) {
+        return true;
     }
-    return true;
-  }
 
-  QJsonObject resp;
-  resp["status"] = "success";
-  resp["message"] = "Access granted to payments resource";
-  resp["user_id"] = userId;
-  if (method == "GET") {
-    resp["data"] = "List of payments (dummy)";
-  } else if (method == "POST") {
-    resp["data"] = "Payment created (dummy)";
-  }
-  QFile outFile(output);
-  if (outFile.open(QIODevice::WriteOnly)) {
-    outFile.write(QJsonDocument(resp).toJson());
-  }
-  return true;
+    if (!checkScope(scopes, requiredScope, output)) {
+        return true;
+    }
+
+    return buildPaymentResponse(output, userId, method);
 }

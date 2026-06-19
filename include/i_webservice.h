@@ -3,12 +3,11 @@
 
 #include <QString>
 
-class IWebService
-{
+class IWebService {
 public:
     virtual ~IWebService() = default;
 
     virtual bool handleRequest(const QString& input, const QString& output) = 0;
 };
 
-#endif // I_WEBSERVICE_H
+#endif  // I_WEBSERVICE_H

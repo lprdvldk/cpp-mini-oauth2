@@ -5,7 +5,7 @@
 
 class TokenService : public IWebService {
 public:
-  bool handleRequest(const QString &input, const QString &output) override;
+    bool handleRequest(const QString &input, const QString &output) override;
 };
 
-#endif // TOKENSERVICE_H
+#endif  // TOKENSERVICE_H

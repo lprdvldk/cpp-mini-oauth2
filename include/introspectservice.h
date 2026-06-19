@@ -5,7 +5,7 @@
 
 class IntrospectService : public IWebService {
 public:
-  bool handleRequest(const QString &input, const QString &output) override;
+    bool handleRequest(const QString &input, const QString &output) override;
 };
 
-#endif // INTROSPECTSERVICE_H
+#endif  // INTROSPECTSERVICE_H

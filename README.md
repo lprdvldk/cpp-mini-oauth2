@@ -38,8 +38,6 @@
 
 # Prerequisites
 
-Building for macbook air m4 apple sillicon. macOS Tahoe 26.2
-
 1. Qt (Core module) – version 5 or 6.
 2. OpenSSL – for HMAC-SHA256 signatures.
 3. CMake – version 3.16 or higher.
@@ -47,9 +45,9 @@ Building for macbook air m4 apple sillicon. macOS Tahoe 26.2
 5. python3 (I'm using python3.12 currently)
 
 # Build
-In dir execute
 ```bash
-chmod +x build.sh
+git clone <repository-url>
+cd cpp-mini-oauth2
 ./build.sh
 ```
 
@@ -178,19 +176,6 @@ Command format:
 
 ## POST /token
 
-```bash
-curl -s -X POST "$BASE_URL/token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "grant_type": "password",
-    "username": "alice",
-    "password": "password",
-    "client_id": "cli-001",
-    "client_secret": "secret",
-    "scopes": ["payments:read", "payments:write"]
-  }'
-```
-
 - Request:
 ```json
 {
@@ -220,19 +205,7 @@ curl -s -X POST "$BASE_URL/token" \
   "error_description": "Invalid username or password"
 }
 ```
-
-Grant Type: client_credentials
-
-```bash
-curl -s -X POST "$BASE_URL/token" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "grant_type": "client_credentials",
-    "client_id": "cli-001",
-    "client_secret": "secret",
-    "scopes": ["payments:read"]
-  }'
-```
+### Grant Type: client_credentials
 
 - Request:
 
@@ -260,16 +233,6 @@ curl -s -X POST "$BASE_URL/token" \
 ## POST /token/refresh
 
 Exchanges a valid refresh token for a new access token (and a new refresh token). The old refresh token is marked as rotated and becomes invalid.
-
-```bash
-  -H "Content-Type: application/json" \
-  -d '{
-    "grant_type": "refresh_token",
-    "refresh_token": "'$REFRESH_TOKEN'",
-    "client_id": "cli-001",
-    "client_secret": "secret"
-  }'
-```
 
 - Request:
 
@@ -302,16 +265,8 @@ Exchanges a valid refresh token for a new access token (and a new refresh token)
 ```
 
 ## POST /api/payments
-Protected resource endpoint that requires a valid access token with the appropriate scope.
 
-```bash
-curl -s -X POST "$BASE_URL/api/payments" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "access_token": "'$ACCESS_TOKEN'",
-    "method": "GET"
-  }'
-```
+Protected resource endpoint that requires a valid access token with the appropriate scope.
 
 - Request:
 
@@ -353,25 +308,8 @@ curl -s -X POST "$BASE_URL/api/payments" \
 }
 ```
 ## POST /revoke
+
 Revokes an access token (by JTI) or a refresh token (by token string). The operation is idempotent.
-
-```bash
-curl -s -X POST "$BASE_URL/revoke" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "token": "'$ACCESS_TOKEN'",
-    "token_type_hint": "access_token"
-  }'
-```
-
-```bash
-curl -s -X POST "$BASE_URL/revoke" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "token": "'$REFRESH_TOKEN'",
-    "token_type_hint": "refresh_token"
-  }'
-```
 
 - Request:
 
@@ -403,14 +341,6 @@ If token_type_hint is omitted, the server attempts to detect the type.
 ## POST /introspect
 Checks the status of an access token and returns its metadata if active.
 
-```bash
-curl -s -X POST "$BASE_URL/introspect" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "token": "'$ACCESS_TOKEN'"
-  }'
-```
-
 - Request:
 
 ```json
@@ -441,7 +371,8 @@ curl -s -X POST "$BASE_URL/introspect" \
 ```
 # Error Codes
 
-```text
+All endpoints return JSON responses with error and error_description fields on failure.
+
 Error Code             | Description
 invalid_client         | Client ID or secret is incorrect.
 invalid_grant          | Invalid username/password, expired refresh token, etc.
@@ -451,13 +382,13 @@ unsupported_grant_type | Unknown grant_type value.
 unauthorized_client	   | Client is not allowed to use the requested grant type.
 invalid_request        | Missing required fields (e.g., token).
 server_error           | Internal server error (logged to stderr).
-```
 
 # Token Format
 
 ## Access Token
 
-```text
+The access token is a JSON Web Token (JWT) signed with HMAC‑SHA256 using the auth_secret. It contains the following claims:
+
 typ – "AT" (Access Token)
 alg – "HS256"
 iss – issuer (from config)
@@ -469,7 +400,7 @@ roles – array of user roles
 iat – issued at (UNIX timestamp)
 exp – expiration time (UNIX timestamp)
 jti – unique token identifier (UUID)
-```
+
 - Example (decoded):
 
 ```json
@@ -490,7 +421,7 @@ jti – unique token identifier (UUID)
 
 ## Refresh Token
 
-The refresh token is an opaque UUID string. It is stored in refresh_index.ndjson along with its associated metadata.
+The refresh token is an opaque UUID string (without dashes by default). It is stored in refresh_index.ndjson along with its associated metadata.
 
 # Interactive Test Client (Python)
 
@@ -530,18 +461,18 @@ Choose an option (0-9):
 # User Manual
 
 1. Prepare Data – ensure data/users.json, data/clients.json, and data/roles.json exist with at least one user, client, and role definitions.
-2. Start Testing – use the interactive test clients to run predefined scenarios.
+2. Start Testing – use the interactive test clients (Python or Bash) to run predefined scenarios.
 3. Manual Request – to make a custom request, create a JSON file and run:
 
 ```bash
 ./build/cli-server /token my_request.json my_response.json
 ```
 
-4. Inspect Responses – check the output JSON file for the response.
+Inspect Responses – check the output JSON file for the response.
 
-5. Example: Obtaining a Token with curl-like Behavior
+Example: Obtaining a Token with curl-like Behavior
 
-6. Since the server is CLI-based, you can simulate a curl request using a temporary file:
+Since the server is CLI-based, you can simulate a curl request using a temporary file:
 
 ```bash
 echo '{"grant_type":"password","username":"alice","password":"password","client_id":"cli-001","client_secret":"secret","scopes":["payments:read"]}' > req.json

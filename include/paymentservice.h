@@ -5,7 +5,7 @@
 
 class PaymentsService : public IWebService {
 public:
-  bool handleRequest(const QString &input, const QString &output) override;
+    bool handleRequest(const QString &input, const QString &output) override;
 };
 
-#endif // PAYMENTSERVICE_H
+#endif  // PAYMENTSERVICE_H

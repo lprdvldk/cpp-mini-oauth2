@@ -1,75 +1,91 @@
 #include <QCommandLineParser>
 #include <QCoreApplication>
 #include <QDebug>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 #include "config.h"
 #include "datamanager.h"
 #include "i_webservice.h"
-#include "tokenmanager.h"
-#include "webservicefactory.h"
-
 #include "introspectservice.h"
 #include "paymentservice.h"
 #include "refreshservice.h"
 #include "revokeservice.h"
+#include "tokenmanager.h"
 #include "tokenservice.h"
+#include "utils.h"
+#include "webservicefactory.h"
 
 int main(int argc, char *argv[]) {
-  QCoreApplication app(argc, argv);
+    QCoreApplication app(argc, argv);
 
-  if (!Config::instance().load()) {
-    qWarning() << "Could not load config, using defaults.";
-  }
+    QCommandLineParser parser;
+    parser.setApplicationDescription("Mini OAuth2 server emulator");
+    parser.addHelpOption();
+    parser.addPositionalArgument("endpoint", "Endpoint name (e.g. /token)");
+    parser.addPositionalArgument("input", "Input JSON file path");
+    parser.addPositionalArgument("output", "Output JSON file path");
+    parser.process(app);
 
-  TokenManager::initialize(Config::instance().secret(),
-                           Config::instance().issuer(),
-                           Config::instance().accessTtlSec());
+    const QStringList args = parser.positionalArguments();
+    if (args.size() != 3) {
+        parser.showHelp(1);
+        return 1;
+    }
 
-  if (!DataManager::instance().loadAll()) {
-    qWarning() << "Some data files could not be loaded.";
-  }
+    QString endpoint = args[0];
+    QString inputPath = args[1];
+    QString outputPath = args[2];
 
-  WebServiceFactory::instance().registerWebService<TokenService>("/token");
-  WebServiceFactory::instance().registerWebService<RefreshService>(
-      "/token/refresh");
-  WebServiceFactory::instance().registerWebService<PaymentsService>(
-      "/api/payments");
-  WebServiceFactory::instance().registerWebService<RevokeService>("/revoke");
-  WebServiceFactory::instance().registerWebService<IntrospectService>(
-      "/introspect");
+    auto writeInitError = [&](const QString &description) {
+        QJsonObject resp;
+        resp["status"] = "Internal server error";
+        resp["code"] = 500;
+        resp["description"] = description;
+        QFile outFile(outputPath);
+        if (outFile.open(QIODevice::WriteOnly)) {
+            outFile.write(QJsonDocument(resp).toJson());
+        }
+    };
 
-  QCommandLineParser parser;
-  parser.setApplicationDescription("Mini OAuth2 server emulator");
-  parser.addHelpOption();
-  parser.addPositionalArgument("endpoint", "Endpoint name (e.g. /token)");
-  parser.addPositionalArgument("input", "Input JSON file path");
-  parser.addPositionalArgument("output", "Output JSON file path");
-  parser.process(app);
+    if (!Config::instance().load()) {
+        utils::logError("Failed to load configuration");
+        return 1;
+    }
 
-  const QStringList args = parser.positionalArguments();
-  if (args.size() != 3) {
-    qCritical() << "Ошибка: требуется ровно три аргумента.";
-    parser.showHelp(1);
-  }
+    TokenManager::initialize(Config::instance().secret(),
+                             Config::instance().issuer(),
+                             Config::instance().accessTtlSec());
 
-  QString endpoint = args[0];
-  QString inputPath = args[1];
-  QString outputPath = args[2];
+    if (!DataManager::instance().loadAll()) {
+        utils::logError("Failed to load data files");
+        return 1;
+    }
 
-  auto webService =
-      WebServiceFactory::instance().createWebService(endpoint.toStdString());
-  if (webService) {
+    WebServiceFactory::instance().registerWebService<TokenService>("/token");
+    WebServiceFactory::instance().registerWebService<RefreshService>(
+        "/token/refresh");
+    WebServiceFactory::instance().registerWebService<PaymentsService>(
+        "/api/payments");
+    WebServiceFactory::instance().registerWebService<RevokeService>("/revoke");
+    WebServiceFactory::instance().registerWebService<IntrospectService>(
+        "/introspect");
+
+    auto webService =
+        WebServiceFactory::instance().createWebService(endpoint.toStdString());
+    if (!webService) {
+        utils::logError("Unregistered endpoint: " + endpoint);
+        return 1;
+    }
+
     bool result = webService->handleRequest(inputPath, outputPath);
     if (!result) {
-      qWarning() << "Service handler returned error.";
-      return 1;
+        utils::logError("Service handler returned error");
+        return 1;
     }
-  } else {
-    qCritical() << "Ошибка: незарегистрированный эндпоинт.";
-    parser.showHelp(1);
-  }
 
-  DataManager::instance().saveAll();
+    DataManager::instance().saveAll();
 
-  return 0;
+    return 0;
 }

@@ -1,7 +1,5 @@
 #include "tokenservice.h"
-#include "config.h"
-#include "datamanager.h"
-#include "tokenmanager.h"
+
 #include <QDateTime>
 #include <QDebug>
 #include <QFile>
@@ -10,154 +8,108 @@
 #include <QJsonObject>
 #include <QUuid>
 
-bool TokenService::handleRequest(const QString &input, const QString &output) {
-  QFile inFile(input);
-  if (!inFile.open(QIODevice::ReadOnly)) {
-    qWarning() << "Cannot open input file:" << input;
-    return false;
-  }
-  QByteArray data = inFile.readAll();
-  QJsonDocument doc = QJsonDocument::fromJson(data);
-  if (doc.isNull()) {
-    qWarning() << "Invalid JSON in input";
-    return false;
-  }
-  QJsonObject req = doc.object();
+#include "config.h"
+#include "datamanager.h"
+#include "tokenmanager.h"
+#include "utils.h"
 
-  QString grantType = req["grant_type"].toString();
-  QString clientId = req["client_id"].toString();
-  QString clientSecret = req["client_secret"].toString();
+namespace {
 
-  Client *client = DataManager::instance().findClientById(clientId);
-  if (!client) {
-    QJsonObject resp;
-    resp["error"] = "invalid_client";
-    resp["error_description"] = "Client not found";
-    QFile outFile(output);
-    if (outFile.open(QIODevice::WriteOnly)) {
-      outFile.write(QJsonDocument(resp).toJson());
-    }
-    return true;
-  }
-  if (!DataManager::instance().checkClientSecret(clientId, clientSecret)) {
-    QJsonObject resp;
-    resp["error"] = "invalid_client";
-    resp["error_description"] = "Invalid client secret";
-    QFile outFile(output);
-    if (outFile.open(QIODevice::WriteOnly)) {
-      outFile.write(QJsonDocument(resp).toJson());
-    }
-    return true;
-  }
+using namespace utils;
 
-  if (grantType == "password") {
+bool handlePasswordGrant(const QJsonObject &request, const Client *client,
+                         const QString &output) {
     if (!client->allowedGrants.contains("password")) {
-      QJsonObject resp;
-      resp["error"] = "unauthorized_client";
-      resp["error_description"] = "Grant type not allowed for this client";
-      QFile outFile(output);
-      if (outFile.open(QIODevice::WriteOnly)) {
-        outFile.write(QJsonDocument(resp).toJson());
-      }
-      return true;
+        return writeError(output, 403,
+                          "Client not allowed for grant: password");
     }
 
-    QString username = req["username"].toString();
-    QString password = req["password"].toString();
+    const QString username = request["username"].toString();
+    const QString password = request["password"].toString();
     if (!DataManager::instance().verifyPassword(username, password)) {
-      QJsonObject resp;
-      resp["error"] = "invalid_grant";
-      resp["error_description"] = "Invalid username or password";
-      QFile outFile(output);
-      if (outFile.open(QIODevice::WriteOnly)) {
-        outFile.write(QJsonDocument(resp).toJson());
-      }
-      return true;
+        return writeError(output, 401, "Unauthorized");
     }
 
-    User *user = DataManager::instance().findUserByUsername(username);
+    auto user = DataManager::instance().findUserByUsername(username);
     if (!user || user->status != "active") {
-      QJsonObject resp;
-      resp["error"] = "invalid_grant";
-      resp["error_description"] = "User not active";
-      QFile outFile(output);
-      if (outFile.open(QIODevice::WriteOnly)) {
-        outFile.write(QJsonDocument(resp).toJson());
-      }
-      return true;
+        return writeError(output, 403, "Forbidden");
     }
 
-    QStringList requestedScopes = req["scopes"].toVariant().toStringList();
-    QStringList userScopes =
+    const auto requestedScopes = request["scopes"].toVariant().toStringList();
+    const auto userScopes =
         DataManager::instance().getScopesForRoles(user->roles);
-    QStringList allowedScopes = client->allowedScopes;
-    QStringList finalScopes =
-        DataManager::instance().intersectScopes(requestedScopes, allowedScopes);
+    auto finalScopes = DataManager::instance().intersectScopes(
+        requestedScopes, client->allowedScopes);
     finalScopes =
         DataManager::instance().intersectScopes(finalScopes, userScopes);
 
-    // Generate access token
-    QString accessToken = TokenManager::generateAccessToken(
-        clientId, user->userId, finalScopes, user->roles, client->aud);
-    // Generate refresh token
-    QString refreshToken = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const QString accessToken = TokenManager::generateAccessToken(
+        client->clientId, user->userId, finalScopes, user->roles, client->aud);
+
+    const QString refreshToken =
+        QUuid::createUuid().toString(QUuid::WithoutBraces);
     RefreshRecord rec;
     rec.refreshToken = refreshToken;
     rec.userId = user->userId;
-    rec.clientId = clientId;
+    rec.clientId = client->clientId;
     rec.scopes = finalScopes;
     rec.expires = QDateTime::currentDateTimeUtc().addDays(
         Config::instance().refreshTtlDays());
     rec.rotated = false;
     DataManager::instance().addRefreshRecord(rec);
 
-    QJsonObject resp;
-    resp["access_token"] = accessToken;
-    resp["refresh_token"] = refreshToken;
-    resp["token_type"] = "Bearer";
-    resp["expires_in"] = Config::instance().accessTtlSec();
-    QFile outFile(output);
-    if (outFile.open(QIODevice::WriteOnly)) {
-      outFile.write(QJsonDocument(resp).toJson());
-    }
-    return true;
-  } else if (grantType == "client_credentials") {
+    QJsonObject response;
+    response["access_token"] = accessToken;
+    response["refresh_token"] = refreshToken;
+    response["token_type"] = "Bearer";
+    response["expires_in"] = Config::instance().accessTtlSec();
+
+    return writeResponse(output, response);
+}
+
+bool handleClientCredentialsGrant(const QJsonObject &request,
+                                  const Client *client, const QString &output) {
     if (!client->allowedGrants.contains("client_credentials")) {
-      QJsonObject resp;
-      resp["error"] = "unauthorized_client";
-      resp["error_description"] = "Grant type not allowed for this client";
-      QFile outFile(output);
-      if (outFile.open(QIODevice::WriteOnly)) {
-        outFile.write(QJsonDocument(resp).toJson());
-      }
-      return true;
+        return writeError(output, 403,
+                          "Client not allowed for grant: client_credentials");
     }
 
-    QStringList requestedScopes = req["scopes"].toVariant().toStringList();
-    QStringList finalScopes = DataManager::instance().intersectScopes(
+    const auto requestedScopes = request["scopes"].toVariant().toStringList();
+    const auto finalScopes = DataManager::instance().intersectScopes(
         requestedScopes, client->allowedScopes);
 
-    // No user, so sub = client_id, roles empty
-    QString accessToken = TokenManager::generateAccessToken(
-        clientId, clientId, finalScopes, QStringList(), client->aud);
-    // No refresh token for client_credentials
-    QJsonObject resp;
-    resp["access_token"] = accessToken;
-    resp["token_type"] = "Bearer";
-    resp["expires_in"] = Config::instance().accessTtlSec();
-    QFile outFile(output);
-    if (outFile.open(QIODevice::WriteOnly)) {
-      outFile.write(QJsonDocument(resp).toJson());
+    const QString accessToken = TokenManager::generateAccessToken(
+        client->clientId, client->clientId, finalScopes, QStringList(),
+        client->aud);
+
+    QJsonObject response;
+    response["access_token"] = accessToken;
+    response["token_type"] = "Bearer";
+    response["expires_in"] = Config::instance().accessTtlSec();
+
+    return writeResponse(output, response);
+}
+
+}  // namespace
+
+bool TokenService::handleRequest(const QString &input, const QString &output) {
+    QJsonObject request;
+    if (!readRequest(input, request)) {
+        writeError(output, 400, "Bad Request");
+        return true;
     }
-    return true;
-  } else {
-    QJsonObject resp;
-    resp["error"] = "unsupported_grant_type";
-    resp["error_description"] = "Grant type not supported";
-    QFile outFile(output);
-    if (outFile.open(QIODevice::WriteOnly)) {
-      outFile.write(QJsonDocument(resp).toJson());
+
+    const Client *client = nullptr;
+    if (!validateClient(request, client, output)) {
+        return true;
     }
-    return true;
-  }
+
+    const QString grantType = request["grant_type"].toString();
+    if (grantType == "password") {
+        return handlePasswordGrant(request, client, output);
+    } else if (grantType == "client_credentials") {
+        return handleClientCredentialsGrant(request, client, output);
+    } else {
+        return writeError(output, 400, "unsupported_grant_type");
+    }
 }

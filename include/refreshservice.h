@@ -5,7 +5,7 @@
 
 class RefreshService : public IWebService {
 public:
-  bool handleRequest(const QString &input, const QString &output) override;
+    bool handleRequest(const QString &input, const QString &output) override;
 };
 
-#endif // REFRESHSERVICE_H
+#endif  // REFRESHSERVICE_H

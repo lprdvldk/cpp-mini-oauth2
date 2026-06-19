@@ -1,104 +1,76 @@
-#include "datamanager.h"
-#include "jwt-cpp/jwt.h"
 #include "revokeservice.h"
-#include "tokenmanager.h"
+
 #include <QDebug>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
 
-bool RevokeService::handleRequest(const QString &input, const QString &output) {
-  QFile inFile(input);
-  if (!inFile.open(QIODevice::ReadOnly)) {
-    qWarning() << "Cannot open input file:" << input;
-    return false;
-  }
-  QByteArray data = inFile.readAll();
-  QJsonDocument doc = QJsonDocument::fromJson(data);
-  if (doc.isNull()) {
-    qWarning() << "Invalid JSON in input";
-    return false;
-  }
-  QJsonObject req = doc.object();
+#include "datamanager.h"
+#include "jwt-cpp/jwt.h"
+#include "utils.h"
 
-  QString token = req["token"].toString();
-  QString tokenTypeHint =
-      req["token_type_hint"].toString();
+namespace {
 
-  if (token.isEmpty()) {
-    QJsonObject resp;
-    resp["error"] = "invalid_request";
-    resp["error_description"] = "Missing token";
-    QFile outFile(output);
-    if (outFile.open(QIODevice::WriteOnly)) {
-      outFile.write(QJsonDocument(resp).toJson());
-    }
-    return true;
-  }
+using namespace utils;
 
-  // Determine token type
-  if (tokenTypeHint.isEmpty()) {
-    tokenTypeHint = "access_token";
-  }
-
-  if (tokenTypeHint == "access_token") {
+bool handleAccessTokenRevocation(const QString &token, const QString &output) {
     try {
-      auto decoded = jwt::decode(token.toStdString());
-      auto jtiClaim = decoded.get_payload_claim("jti");
-      if (jtiClaim.get_type() != jwt::json::type::string) {
-        throw std::exception();
-      }
-      QString jti = QString::fromStdString(jtiClaim.as_string());
-      auto expClaim = decoded.get_payload_claim("exp");
-      QDateTime exp = QDateTime::fromSecsSinceEpoch(expClaim.as_integer());
-      DataManager::instance().revokeAccessToken(jti, exp);
-      QJsonObject resp;
-      resp["status"] = "success";
-      QFile outFile(output);
-      if (outFile.open(QIODevice::WriteOnly)) {
-        outFile.write(QJsonDocument(resp).toJson());
-      }
-      return true;
+        if (!utils::isValidJwtFormat(token)) {
+            writeError(output, 400, "Bad request");
+            return true;
+        }
+        auto decoded = jwt::decode(token.toStdString());
+        auto jtiClaim = decoded.get_payload_claim("jti");
+        if (jtiClaim.get_type() != jwt::json::type::string) {
+            throw std::exception();
+        }
+        auto jti = QString::fromStdString(jtiClaim.as_string());
+        auto expClaim = decoded.get_payload_claim("exp");
+        auto exp = QDateTime::fromSecsSinceEpoch(expClaim.as_integer());
+        DataManager::instance().revokeAccessToken(jti, exp);
+        return writeSuccessResponse(output);
     } catch (...) {
-      QJsonObject resp;
-      resp["error"] = "invalid_token";
-      resp["error_description"] = "Could not parse access token";
-      QFile outFile(output);
-      if (outFile.open(QIODevice::WriteOnly)) {
-        outFile.write(QJsonDocument(resp).toJson());
-      }
-      return true;
+        writeError(output, 401, "Unauthorized");
+        return true;
     }
-  } else if (tokenTypeHint == "refresh_token") {
+}
+
+bool handleRefreshTokenRevocation(const QString &token, const QString &output) {
     RefreshRecord rec;
     if (!DataManager::instance().findRefreshRecord(token, rec)) {
-      QJsonObject resp;
-      resp["error"] = "invalid_token";
-      resp["error_description"] = "Refresh token not found";
-      QFile outFile(output);
-      if (outFile.open(QIODevice::WriteOnly)) {
-        outFile.write(QJsonDocument(resp).toJson());
-      }
-      return true;
+        return writeError(output, 401, "Unauthorized");
     }
     DataManager::instance().revokeRefreshToken(token, rec.expires);
     DataManager::instance().removeRefreshRecord(token);
-    QJsonObject resp;
-    resp["status"] = "success";
-    QFile outFile(output);
-    if (outFile.open(QIODevice::WriteOnly)) {
-      outFile.write(QJsonDocument(resp).toJson());
+    return writeSuccessResponse(output);
+}
+
+}  // namespace
+
+bool RevokeService::handleRequest(const QString &input, const QString &output) {
+    QJsonObject request;
+    if (!readRequest(input, request)) {
+        writeError(output, 400, "Bad Request");
+        return true;
     }
-    return true;
-  } else {
-    QJsonObject resp;
-    resp["error"] = "unsupported_token_type";
-    resp["error_description"] =
-        "token_type_hint must be access_token or refresh_token";
-    QFile outFile(output);
-    if (outFile.open(QIODevice::WriteOnly)) {
-      outFile.write(QJsonDocument(resp).toJson());
+
+    const QString token = request["token"].toString();
+    if (token.isEmpty()) {
+        writeError(output, 400, "Bad Request");
+        return true;
     }
-    return true;
-  }
+
+    QString tokenTypeHint = request["token_type_hint"].toString();
+    if (tokenTypeHint.isEmpty()) {
+        tokenTypeHint = "access_token";
+    }
+
+    if (tokenTypeHint == "access_token") {
+        return handleAccessTokenRevocation(token, output);
+    } else if (tokenTypeHint == "refresh_token") {
+        return handleRefreshTokenRevocation(token, output);
+    } else {
+        writeError(output, 400, "Bad Request");
+        return true;
+    }
 }
